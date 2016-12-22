@@ -1,0 +1,165 @@
+\documentclass[10pt, a4paper]{article}
+\usepackage[margin=2.0cm]{geometry}
+\usepackage{stmaryrd}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumerate}
+\usepackage{bbold}
+\usepackage{dsfont}
+\usepackage{wrapfig}
+\usepackage{algorithm2e}
+\usepackage{changepage}
+\usepackage{undertilde}
+\usepackage{hyperref}
+\hypersetup{pdftex,colorlinks=true,allcolors=blue}
+\usepackage{hypcap}
+\usepackage{multicol}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{qtree}
+
+\usepackage[amsmath,hyperref]{ntheorem}
+\usepackage{framed}
+\usepackage{booktabs}
+\usepackage{needspace}
+
+\newcommand{\thm}{
+    \theoremstyle{plain}
+    \theoremseparator{.}
+    \theorembodyfont{\upshape}
+    \theoremheaderfont{\bfseries}
+}
+
+\thm\newtheorem{definition}{Definition}[subsection]
+\thm\newtheorem{proposition}[definition]{Proposition}
+\thm\newtheorem{theorem}[definition]{Theorem}
+\thm\newtheorem{lemma}[definition]{Lemma}
+
+
+\setlength{\parskip}{1em}
+\setlength{\parindent}{0em}
+\SetKwProg{Fn}{Function}{\string:}{}
+
+% Default fixed font does not support bold face
+\DeclareFixedFont{\ttb}{T1}{txtt}{bx}{n}{10} % for bold
+\DeclareFixedFont{\ttm}{T1}{txtt}{m}{n}{10}  % for normal
+
+% Custom colors
+\usepackage{color}
+\definecolor{deepblue}{rgb}{0,0,0.5}
+\definecolor{deepred}{rgb}{0.6,0,0}
+\definecolor{deepgreen}{rgb}{0,0.5,0}
+
+\usepackage{listings}
+
+% Python style for highlighting
+\newcommand\pythonstyle{\lstset{
+language=Python,
+basicstyle=\ttm,
+otherkeywords={self},             % Add keywords here
+keywordstyle=\ttb\color{deepblue},
+emph={MyClass,__init__},          % Custom highlighting
+emphstyle=\ttb\color{deepred},    % Custom highlighting style
+stringstyle=\color{deepgreen},
+frame=tb,                         % Any extra options here
+showstringspaces=false            %
+}}
+
+
+% Python environment
+\lstnewenvironment{python}[1][]
+{
+\pythonstyle
+\lstset{#1}
+}
+{}
+
+% Python for external files
+\newcommand\pythonexternal[2][]{{
+\pythonstyle
+\lstinputlisting[#1]{#2}}}
+
+% Python for inline
+\newcommand\pythoninline[1]{{\pythonstyle\lstinline!#1!}}
+\lstset{showstringspaces=false}
+
+\newcommand\Var{\text{Var}}
+\renewcommand\vec[1]{\utilde{#1}}
+
+\newcommand{\pic}[2]{\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\textwidth]{#1}
+    \caption{#2}
+ \end{figure}
+}
+
+\begin{document}
+
+	\begin{center}
+	{\Large\bf Image Processing and Computer Vision}
+
+	\vspace{.1in}
+
+	Course Summary
+
+  Dylan Cope
+
+	\vspace{.2in}
+
+	\end{center}
+
+	\section{Modelling and Image}
+
+    For coordinates $x_1, x_2, \dots, x_m$ and colour values $c_1, c_2, \dots, c_n$, an image encodes a function $f : \mathcal{R}^m \rightarrow \mathcal{R}^n$ mapping between these variables, $m$ is the image dimensionality and $n$ is the number of colour channels.
+
+  \section{Convolutions}
+
+  \section{Hough Transforms}
+
+  Given an image $\underset{m \times n}{I}$ and a shape described by $p$ parameters, the Hough transform $H$ is a $p$-dimensional space that maps every possible instance of the given shape to a value indicating its presence in $I$. The process of detecting shapes in images using Hough transforms is to find shapes that have values in the transform greater than some threshold.
+  
+
+  \subsection{Line Detecting}
+
+  Lines are characteristic of two parameters; the $r$ and $\varphi$ values of the equation $r = x\sin \varphi + y\cos \varphi$. This means the Hough transform for a given image is two-dimensional.
+
+  \subsection{Circle Detecting}
+
+  \subsection{Generalised Hough Transform}
+
+  \section{Viola-Jones Object Detection}
+
+  \subsection{Integral Image}
+
+  The integral image $\underset{m \times n}{II}$ is a transformation of an image $\underset{m \times n}{I}$ where each entry defined by the following recursive relationship,
+
+  $$
+    ii(x, y) = \begin{cases}
+      0 & \text{if } x \notin [0, n) \text{ or } y \notin [0, m) \\
+      I_{x, y} + ii(x - 1, y) + ii(x, y - 1) - ii(x-1, y-1) & \text{otherwise}
+    \end{cases}
+  $$
+
+  Through memoization, $II$ is computed in $O(mn)$ time (and $II$ is the resultant memoization table).
+
+  \subsection{Haar-like Features}
+
+  \subsection{AdaBoosting}
+
+  \subsection{Performance}
+
+  \section{Motion}
+
+  \subsection{Lucas and Kanade Algorithm}
+
+  \subsection{Aperature Problem}
+
+  \subsection{Segmentation by Velocity}
+
+  \section{Stereo Vision}
+
+  \subsection{Calibration}
+
+  \subsection{Correspondance Problem}
+
+\end{document}
