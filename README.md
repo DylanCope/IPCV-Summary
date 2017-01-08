@@ -2,31 +2,37 @@
 # Image Processing and Computer Vision
 
 The following notebook implements and demonstrates many of the key concepts, methods and algorithms in the University of Bristol Image Processing and Computer Vision course. The notebook covers the following topics:
+
 * Image Acquisition and Representation
     * Modelling Images
     * Sampling
-    * Convolutions
+    * Convolutions 
 * Frequency Domain and Image Transforms
     * Fourier Analysis
     * Fourier Transforms
     * Convolution Theorem
-    * Hough Transforms
+    * Hough Transforms 
+* Segmentation
+    * Thresholding
+    * Edge-based methods
+    * Region-based methods
+    * Statistical methods 
 * Object Detection
     * Integral Images
     * Harr-Like Features
-    * Ada-Boosting
+    * Ada-Boosting 
 * Detecting Motion
     * Optical Flow Equations
-    * Lucas-Kanade Method
+    * Lucas-Kanade Method 
 * Stereo Vision
     * Epipolar Geometry
     * Scale-Invariant Feature Transform (SIFT)
-    * Spatial Gradient Descriptors
+    * Spatial Gradient Descriptors 
 
 
 ```python
 from __future__ import division
-from itertools import product, ifilter, izip, imap, chain, starmap, combinations
+from itertools import *
 from functools import partial
 from operator import getitem, mul, sub
 from random import sample, seed
@@ -56,8 +62,10 @@ def load_image( name ):
     return cv2.cvtColor( image, cv2.COLOR_BGR2RGB )
 
 def show_image( image, ax = None, **kwargs ):
-    ''' Given a matrix representing an image, (and optionally an axes to draw on), 
-        matplotlib is used to present the image inline in the notebook.
+    ''' Given a matrix representing an image, 
+        (and optionally an axes to draw on), 
+        matplotlib is used to present the image 
+        inline in the notebook.
     '''
     if ax == None:
         fig, ax = plt.subplots()
@@ -103,6 +111,10 @@ def show_images( images, titles = [], orientation = 'horizontal',
 def to_255( img ):
     out = img - np.min( img )
     return out * 255 / np.max(out)
+
+def gauss( s, m, x, y ):
+    xm, ym = m
+    return np.exp(-((x-xm)**2 + (y-ym)**2)/(2*s**2)) / (2*np.pi*s**2)
 ```
 
     2.7.12 |Anaconda custom (64-bit)| (default, Jun 29 2016, 11:07:13) [MSC v.1500 64 bit (AMD64)]
@@ -143,12 +155,28 @@ plt.show()
 ```
 
 
-![png](output_3_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_3_0.png)
 
 
-### Shannon's Sampling Theorem
+### Shannon-Nyquist Sampling Theorem
 
 An analogue signal containing components up to some maximum frequency $u$ may be completely reconstructed by regularly spread samples, provided the sampling rate is above $2u$ samples per second. This is demonstrated by the example above, the function $f$ is a linear combination of two components with frequencies 1 and 3, we can see that compared to the actual function the approximations from the sampling don't contain enough structure to describe the full signal until 6 samples per unit.
+
+#### Newton Rings Example
+
+Consider viewing a manifestation of Newton’s rings under a microscope (left figure). After taking a small image of the phenomenon with a cheap webcam (right figure). Why does additional structure appear to exist in the photograph that wasn't visible to the human eye?
+
+<img src="images/sampling_demo.png" width="400"/>
+
+The image taken with the webcam was sampled at too low a frequency (below the Shannon-Nyquist limit) and, thus, it shows artefacts not present from natural phenomena (concentric rings at top, bottom, left and right). This is known as aliasing. Classic, similar effects can be seen when a striped shirt is undersampled and appears with aliasing on TV.
+
+#### Car Wheel Example 
+
+Consider taking a 25 fps video of a car wheel spinning, when viewing the video it appears as if the car wheels are moving backwards and have been coloured strangely.
+
+<img src="images/car_wheel.png" width="400"/>
+
+The camera takes a sample of the world every 1/25th of a second. If the car wheels have turned from frame to frame enough to having revolved just under a full revolution, we are presented with consecutive frames in which the wheel seems to turn slowly backwards. This can be accounted for by increasing the framerate of the camera or removing the pattern from the wheel so that no rotation can be percieved. This is an example of the Shannon-Nyquist theorem as the sampling rate across time is less than the threshold of two times the rotational frequency of the wheel.
 
 ## Convolutions
 
@@ -231,34 +259,41 @@ general vector space case we can find the Fourier coefficients by taking the inn
     b_n &= \int_{-\frac{T}{2}}^{\frac{T}{2}}{ f(x) \sin\Big( \frac{2\pi n x}{T}\Big) dx }
 \end{align*}
 
-For the function $s(x) = x / \pi$ for $-\pi \leq x \pi$ and $s(x) = s(x \mod 2\pi - pi)$ otherwise, the following cells shows the Fourier approximation for increasingly higher order terms, where
+For the saw tooth function $s(x) = x / \pi$ for $-\pi \leq x \pi$ and $s(x) = s(x \mod 2\pi - pi)$ otherwise, the following cells shows the Fourier approximation for increasingly higher order terms, where
 $$
-    s_n(x) = \sum_{n=1}^{N}{\frac{1}{n} (-1)^{n+1} \sin nx}
+    s_N(x) = \sum_{n=1}^{N}{\frac{1}{n} (-1)^{n+1} \sin nx}
 $$
-Running the cell animates the plot and shows how the approximation improves with more terms.
+The following code animates the plot and shows how the approximation improves with more terms.
 
 
 ```python
-for N in range(1, 10) + range(10, 100, 5) + range(100, 1001, 100):
-    fig, ax = plt.subplots()
+def approx_saw_tooth( N, ax ):    
     s = lambda x : (((x-np.pi)%(2*np.pi))/np.pi) - 1
+    term = lambda x, n : ((-1)**(n+1)) * sin(n*x) / n
+    series = lambda x : imap( partial( term, x ), count(1) )
+    s_N = lambda x : sum(islice(series(x), N+1)) * 2 / np.pi
+    
     xs = np.linspace( -10, 10, num = 1000 )
     ys = map( s, xs )
     ax.plot( xs, ys, label='original function' )
-    s_n = lambda x : sum( ((-1)**(n+1)) * sin(n*x) / n for n in range(1, N+1) ) * 2 / np.pi
-    ys = map( s_n, xs )
+    ys = map( s_N, xs )
     ax.plot( xs, ys, c = 'r', label='approximation' )
-    ax.set_title( 'Fourier Approximation of %d terms' % N )
+    ax.set_title( 'Approximation of %d terms' % N )
     ax.set_xlim( -3*np.pi, 3*np.pi )
     ax.set_ylim( -1.5, 2.5 )
     ax.legend()
+    
+for N in range(1, 10) + range(10, 100, 5) + range(100, 1001, 300):
+    fig, axs = plt.subplots( 1, 2, figsize=(6, 3) )
+    approx_saw_tooth( 5, axs[0] )
+    approx_saw_tooth( N, axs[1] )
+    plt.tight_layout()
     plt.show()
     clear_output( wait = True )
-    sleep( 0.2 )
 ```
 
 
-![png](output_8_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_8_0.png)
 
 
 ### Fourier Transforms
@@ -315,7 +350,7 @@ plt.show()
 ```
 
 
-![png](output_10_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_10_0.png)
 
 
 
@@ -345,7 +380,7 @@ plt.show()
 ```
 
 
-![png](output_11_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_11_0.png)
 
 
 ### Frequency Domain Analysis
@@ -414,12 +449,12 @@ to denote the first complex root of unity. The properties of these numbers lead 
 represented as $w_N, w_N^2,\dots, w_N^{N-1}$. To explain why we are using this points, consider the 
 following properties:
 
-### The Cancellation Lemma: 
+#### The Cancellation Lemma
 $$
 \forall\ d,k \in \mathbb{N},\ \omega_{dN}^{dk} = \omega_N^k
 $$
 
-### The Halving Lemma:
+#### The Halving Lemma
 
 If $N>0$ is even then the squares of the $N$ complex $N$-th roots are the $\frac{N}{2}$ complex 
 $\frac{N}{2}$-th roots of unity. Which is to say for all even nonnegative $N$ and nonnegative $k$,
@@ -516,20 +551,23 @@ def sharpen( img ):
     return img - laplace( img )
     
 img = load_image( 'lena.bmp' )
+size = 20
+kernel = np.zeros(( size, size ))
+for i, j in indices( kernel ):
+    x, y = i - size/2, j - size/2
+    kernel[i, j] = gauss( 3, (0, 0), x, y )
+
+img = cv2.filter2D( img, -1, kernel )
 img = cv2.cvtColor( img, cv2.COLOR_BGR2GRAY )
-show_images([ img, laplace( img ), sharpen( img )], 
+laplaced = laplace( img )
+sharpened = sharpen( img )
+show_images([ img, laplaced, sharpened ], 
             ['image', 'image*k', 'sharpened'], 
             figsize = (12, 10))
-
-# fig, axs = plt.subplots( 1, 2, figsize=(15, 5) )
-# axs[0].hist( img.flatten(), 255, linewidth=0 )
-# axs[1].hist( to_255(sharpen(img)).flatten(), 255, linewidth=0 )
-# plt.tight_layout()
-# plt.show()
 ```
 
 
-![png](output_16_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_16_0.png)
 
 
 ## Gradient Approximation Kernels
@@ -573,8 +611,10 @@ def sobel( img ):
     if len( img.shape ) == 3:
         img = cv2.cvtColor( img, cv2.COLOR_BGR2GRAY )
     gray = np.float32( img )
-    dfdx = cv2.filter2D( gray, -1, np.matrix( '-1 0 1;-2 0 2;-1 0 1' ) )
-    dfdy = cv2.filter2D( gray, -1, np.matrix( '-1 -2 -1;0 0 0;1 2 1' ) )
+    kx = np.matrix( '-1 0 1;-2 0 2;-1 0 1' )
+    ky = np.matrix( '-1 -2 -1;0 0 0;1 2 1' )
+    dfdx = cv2.filter2D( gray, -1, kx )
+    dfdy = cv2.filter2D( gray, -1, ky )
     mag = np.hypot( dfdx, dfdy )
     psi = np.arctan2( dfdy, dfdx )
     return dfdx, dfdy, mag, psi
@@ -582,16 +622,15 @@ def sobel( img ):
 
 
 ```python
-show_images( map( to_255, list(sobel(lena)) ), figsize = (7, 7), \
-             titles = [ 'df/dx', 'df/dy', 'Magnitude Image', 'Gradient Image' ] )
+lena = load_image('lena.bmp')
+show_images( map( to_255, list(sobel(lena)) ), figsize = (12, 6),
+             structure = [4],
+             titles = [ 'df/dx', 'df/dy', 
+                        'Magnitude Image', 'Gradient Image' ] )
 ```
 
 
-![png](output_19_0.png)
-
-
-
-![png](output_19_1.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_19_0.png)
 
 
 
@@ -624,7 +663,9 @@ def show_vectors_in_windows( U, V, image ):
     ax.quiver( U_win, V_win, angles='xy' )
 
     image_show_win = image.copy()
-    image_show_win = cv2.rectangle( image_show_win, (x, y), (x+w, y+h), (0, 255, 0), 2 )
+    image_show_win = cv2.rectangle( image_show_win, 
+                                    (x, y), (x+w, y+h), 
+                                    (0, 255, 0), 2 )
 
     x, y, w, h = 260, 260, 16, 16
 
@@ -637,7 +678,9 @@ def show_vectors_in_windows( U, V, image ):
     ax.set_title( 'Red window' )
     show_image( win, ax, interpolation = 'none' )
     ax.quiver( U_win, V_win, angles='xy' )
-    lena_show_win = cv2.rectangle( image_show_win, (x, y), (x+w, y+h), (255, 0, 0), 2 )
+    lena_show_win = cv2.rectangle( image_show_win, 
+                                   (x, y), (x+w, y+h), 
+                                   (255, 0, 0), 2 )
 
     ax = fig.add_subplot( 131 )
     ax.set_title( 'lena.bmp' )
@@ -655,7 +698,7 @@ show_vectors_in_windows( U, V, lena )
 ```
 
 
-![png](output_22_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_22_0.png)
 
 
 ## Image Edge Vectors
@@ -667,7 +710,7 @@ show_vectors_in_windows( U, V, lena )
 ```
 
 
-![png](output_24_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_24_0.png)
 
 
 # Hough Transforms
@@ -683,7 +726,8 @@ Lines are characteristic of two parameters; the $r$ and $\varphi$ values of the 
 
 ```python
 def draw_line( image, (r, phi) ):
-    ''' Set all the points in an image along a given linear equation to a value of 1. '''
+    ''' Set all the points in an image along a 
+        given linear equation to a value of 1. '''
     newImage = np.zeros( image.shape )
     transpose = phi < np.arctan2(*image.shape)
     if transpose:
@@ -705,36 +749,43 @@ def draw_line( image, (r, phi) ):
     return newImage.transpose() if transpose else newImage
 
 def round_nearest( x, n ):
-    ''' rounds x to the nearest multiple of n that is less than x '''
+    ''' rounds x to the nearest multiple of n that is 
+        less than x '''
     return int(x / n) * n
 
 def hough_line_transform( image, resolution ):
     '''
-        Given an image with one colour channel and a set of min, max, skip
-        values to use as a resolution of the Hough transform, this function
-        returns a matrix with votes corresponding to lines and a function
-        mapping entries in the Hough transform to line parameters.
+        Given an image with one colour channel and a set 
+        of min, max, skip values to use as a resolution 
+        of the Hough transform, this function returns a 
+        matrix with votes corresponding to lines and a 
+        function mapping entries in the Hough transform 
+        to line parameters.
     '''
     
     r_min, r_max, p_min, p_max, r_skip, p_skip = resolution
     
-    hough = np.zeros((1 + int( (r_max - r_min) / r_skip ), \
-                      1 + int( (p_max - p_min) / p_skip )))
+    w_H = 1 + int( (r_max - r_min) / r_skip )
+    h_H = 1 + int( (p_max - p_min) / p_skip )
+    hough = np.zeros((w_H, h_H))
     
     greq_zero = partial( getitem, image )
     for x, y in filter( greq_zero, indices( image ) ):
-        for hy, p in enumerate(np.arange( p_min, p_max, p_skip )):
+        params =enumerate(np.arange( p_min, p_max, p_skip ))
+        for hy, p in params:
             r = x * np.cos(p) + y * np.sin(p)
             hx = round_nearest( r, r_skip ) - r_min
             hough[ hx, hy ] += 1
         
     return hough, lambda x, y : ((r_min + x * r_skip, 
-                                  p_min + y * p_skip), hough[ x, y ])
+                                  p_min + y * p_skip), 
+                                  hough[ x, y ])
 
 def accum_best( dist_fn, min_dist, thresh, acc, x ):
     '''
-        A function to be partially applied and used in a fold operation
-        to extract parameters from a parameter to vote mapping.
+        A function to be partially applied and used in 
+        a fold operation to extract parameters from a 
+        parameter to vote mapping.
     '''
     p, v = x
     if v < thresh: return acc
@@ -746,8 +797,7 @@ def accum_best( dist_fn, min_dist, thresh, acc, x ):
 
 def hough_extract( hough_space, extract_fn, param_dist_fn,
                    thresh, min_dist ):
-    '''
-        Extract shape parameters from a Hough transform
+    ''' Extract shape parameters from a Hough transform
     '''
     items = list(starmap( extract_fn, indices( hough_space ) ))
     items.sort( key = lambda x : param_dist_fn( (0, 0), x[0] ) )
@@ -765,21 +815,28 @@ def demo_hough_lines( num_lines ):
     image = np.zeros(shape)
     
     seed(0)
-    lines = zip(sample(range(max( *image.shape )), num_lines),
-                sample(np.linspace(-np.pi, np.pi, 5*num_lines), num_lines))
+    mag_space = range(max( *image.shape ))
+    mags = sample(mag_space, num_lines)
+    angle_space = np.linspace( -np.pi, np.pi, 
+                               5*num_lines )
+    angles = sample(angle_space, num_lines)
+    lines = zip(mags, angles)
 
     image = reduce( draw_line, lines, image )
 
     r_min, r_max = 0, int(np.hypot( *image.shape ))
     p_min, p_max = 0, np.pi * 2
     r_skip, p_skip = 1, 0.03
-    resolution = ( r_min, r_max, p_min, p_max, r_skip, p_skip )
+    resolution = ( r_min, r_max, 
+                   p_min, p_max, 
+                   r_skip, p_skip )
     image_lines, param_map = hough_line_transform( image, resolution )
 
     def euclid( (x1, y1), (x2, y2) ):
         return ( (x1 - x2)**2 + (y1 - y2)**2 )**0.5
 
-    lines_h = hough_extract( image_lines, param_map, euclid, 20, 10 )
+    lines_h = hough_extract( image_lines, param_map, 
+                             euclid, 20, 10 )
 
     image_h = reduce( draw_line, lines_h, np.zeros(shape) )
 
@@ -803,7 +860,7 @@ for i in range( 1, 14 ):
 ```
 
 
-![png](output_28_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_28_0.png)
 
 
 In the left image above, the red lines represent the original lines generated at random and the green lines represent the lines derived from the Hough transform. The right image shows the Hough transform as an image, areas of brightness correspond to more pixels voting that the associated lines appear in the input image. 
@@ -825,9 +882,12 @@ def hough_circle_space( img, r_min_p, r_max_p, t ):
     '''
         Params:
             img   - image to find circles within
-            rMinP - proportion of the major axis of the image to use as the maximum radius
-            rMaxP - proportion of the major axis of the image to use as the minimum radius
-            t     - percentage of the maximum magnitude to use as the thresholding value 
+            rMinP - proportion of the major axis of the 
+                    image to use as the maximum radius
+            rMaxP - proportion of the major axis of the 
+                    image to use as the minimum radius
+            t     - percentage of the maximum magnitude 
+                    to use as the thresholding value 
     '''
     
     dfdx, dfdy, mag, psi = sobel( img )
@@ -848,8 +908,10 @@ def hough_circle_space( img, r_min_p, r_max_p, t ):
     
     xs = xrange(w)
     ys = xrange(h)
-    indices = ifilter( lambda p : mag[p] > threshold, product( ys, xs ) )
-    points = product( indices , xrange( r_min, r_max ) )
+    indices = ifilter( lambda p : mag[p] > threshold, 
+                       product( ys, xs ) )
+    points = product( indices, 
+                      xrange( r_min, r_max ) )
     circles = chain.from_iterable( starmap( make_circle, points ) )
     
     return Counter( circles )
@@ -873,8 +935,12 @@ def circles_from_hough( space, threshold_p ):
 def highlight_circles( img, circles ):
     highlighted = img.copy()
     for (x, y, r) in circles:
-        cv2.circle( highlighted, (x, y), r, (0, 255, 0), 1 )
-        cv2.rectangle( highlighted, (x - 2, y - 2), (x + 2, y + 2), (0, 128, 255), -1 )  
+        cv2.circle( highlighted, 
+                    (x, y), r, 
+                    (0, 255, 0), 1 )
+        cv2.rectangle( highlighted, 
+                       (x - 2, y - 2), (x + 2, y + 2), 
+                       (0, 128, 255), -1 )  
     return highlighted
 ```
 
@@ -902,11 +968,11 @@ show_images([ coins, canny, hImg, highlighted ])
 ```
 
 
-![png](output_32_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_32_0.png)
 
 
 
-![png](output_32_1.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_32_1.png)
 
 
 # Image Segmentation
@@ -933,6 +999,8 @@ The threshold selection algorithm starts by computing an intensity value histogr
 The general idea of edge-based methods is to run an edge detection algorithm and extend or delete the given edges.
 
 <img src="images/crack.png" width="200"/>
+
+## Region-based Methods
 
 # Object Detection
 
@@ -972,19 +1040,21 @@ def integral( image ):
         
     result = np.zeros( image.shape )
     for x, y in indices( image ):
-        result[ x, y ] = image[ x, y ] + ii( x - 1, y ) + ii( x, y - 1 ) - ii( x - 1, y - 1)
+        result[ x, y ] = image[ x, y ] + ii( x - 1, y ) +\
+                         ii( x, y - 1 ) - ii( x - 1, y - 1)
         
     return result
 
 lena = load_image( 'lena.bmp' )
 lena_face = lena[ 200:400, 200:350 ]
 integral_lena_face = integral( lena_face )
-show_images([ lena_face, integral_lena_face ], titles = ['input image', 'integral image'], 
-             orientation = 'vertical', figsize=(3, 6) )
+show_images([ lena_face, integral_lena_face ], 
+              titles = ['input image', 'integral image'], 
+              orientation = 'vertical', figsize=(3, 6) )
 ```
 
 
-![png](output_35_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_35_0.png)
 
 
 ### Motivation for Haar-like Features
@@ -1011,15 +1081,35 @@ The following is two frames from a video with a small amount of motion, the imag
 
 
 ```python
-frames = map( load_image, [ 'frame%i.jpg' % i for i in range(1, 3)] )
-frames_denoised = map( cv2.fastNlMeansDenoisingColored, frames )
-frames_gray = map( partial( cv2.cvtColor, code=cv2.COLOR_BGR2GRAY ), frames_denoised )
-frames_f32 = map( np.float32, frames_gray )
+cap = cv2.VideoCapture('images/hand_wave.mp4')
+def read():
+    _, frame = cap.read()
+    w, h, c = frame.shape
+    frame = cv2.resize( frame, (h // 6, w // 6) )
+    frame = cv2.cvtColor( frame, cv2.COLOR_BGR2RGB )
+    frame = cv2.transpose( frame )
+    return frame
+for i in range(10):
+    read()
+frames = [ read(), read() ]
+w, h, c = frames[0].shape
+frames = [ f[:h, :] for f in frames ]
+cap.release()
+
+def dIdt( frames ):
+    frames_denoised = map( cv2.fastNlMeansDenoisingColored, frames )
+    convert_gray = partial( cv2.cvtColor, code=cv2.COLOR_BGR2GRAY )
+    frames_gray = map( convert_gray, frames_denoised )
+    frames_f32 = map( np.float32, frames_gray )
+    return frames_f32[0] - frames_f32[1]
+    
 fig, axs = plt.subplots( 1, 3, figsize=(10, 10) )
-axs[-1].imshow( to_255(frames_f32[0] - frames_f32[1]), cmap='Greys_r' )
+I_t = dIdt( frames )
+axs[-1].imshow( I_t, cmap='Greys_r' )
 axs[-1].axis( 'off' )
 axs[-1].set_title( 'dI/dt')
-for i, (im, ax) in enumerate(zip( frames[:2], axs[:-1] )):
+params = enumerate(zip( frames[:2], axs[:-1] ))
+for i, (im, ax) in params:
     ax.imshow( im, cmap='Greys_r' )
     ax.axis('off')
     ax.set_title( 'I_%i' % (i+1) )
@@ -1027,7 +1117,7 @@ plt.show()
 ```
 
 
-![png](output_42_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_42_0.png)
 
 
 ## The Lucas-Kanade Method
@@ -1053,49 +1143,14 @@ By considering a local window of $(w, h)$ to detect a single movement vector wit
 
 
 ```python
-def gradients( image ):
-    U = cv2.filter2D( np.float32(image), -1, np.matrix( '-1,0,1' ) )
-    V = cv2.filter2D( np.float32(image), -1, np.matrix( '-1;0;1' ) )
-    return np.array([ U, V ])
-
-def fit_window( image_shape, window_shape, (i, j) ):
-    wr, wc = window_shape
-    ir, ic = image_shape
-    return wr < i <= ir - wr and wc < j < ic - wc
-
-def isinvertible(M):
-    return np.linalg.cond(M) < 1 / sys.float_info.epsilon
-
-def lucas_kanade( f1, f2, win = 3 ):
-    window_shape = ( win, win )
-    motion_field = np.zeros( (2,), f1.shape )
-    winr, winc = window_shape
-    fit = partial( fit_window, f1.shape, window_shape )
-    I_x, I_y = gradients( f1 )
-    I_t = f2 - f1
-    for x, y in filter( fit, indices(f1) ):
-        xs = range( x - (winr - 1) // 2, 1 + x + (winr - 1) // 2 )
-        ys = range( y - (winc - 1) // 2, 1 + y + (winc - 1) // 2 )
-        S = np.matrix([[ I_x[i, j], I_y[i, j] ] for i, j in product(xs, ys) ])
-        t = np.matrix([ -I_t[i, j] for i, j in product(xs, ys) ] ).T
-        if isinvertible(S.T*S):
-            v = (S.T*S)**-1 * S.T * t
-            motion_field[ 0, x, y ] = v[0]
-            motion_field[ 1, x, y ] = v[1]
-        else:
-            motion_field[ 0, x, y ] = 0
-            motion_field[ 1, x, y ] = 0
-        
-    return motion_field
-
-def lucas_kanade_np(im1, im2, win=2):
+def lucas_kanade(im1, im2, win=2):
     assert im1.shape == im2.shape
     I_x = np.zeros(im1.shape)
     I_y = np.zeros(im1.shape)
     I_t = np.zeros(im1.shape)
     I_x[1:-1, 1:-1] = (im1[1:-1, 2:] - im1[1:-1, :-2]) / 2
     I_y[1:-1, 1:-1] = (im1[2:, 1:-1] - im1[:-2, 1:-1]) / 2
-    I_t[1:-1, 1:-1] = im1[1:-1, 1:-1] - im2[1:-1, 1:-1]
+    I_t[1:-1, 1:-1] = dIdt([im1, im2])[1:-1, 1:-1] #im1[1:-1, 1:-1] - im2[1:-1, 1:-1]
     params = np.zeros(im1.shape + (5,)) #Ix2, Iy2, Ixy, Ixt, Iyt
     params[..., 0] = I_x * I_x # I_x2
     params[..., 1] = I_y * I_y # I_y2
@@ -1111,7 +1166,7 @@ def lucas_kanade_np(im1, im2, win=2):
                   cum_params[:-1 - 2 * win, :-1 - 2 * win])
     del cum_params
     op_flow = np.zeros(im1.shape + (2,))
-    det = win_params[...,0] * win_params[..., 1] - win_params[..., 2] **2
+    det = win_params[...,0] * win_params[..., 1] - win_params[..., 2]**2
     op_flow_x = np.where(det != 0,
                          (win_params[..., 1] * win_params[..., 3] -
                           win_params[..., 2] * win_params[..., 4]) / det,
@@ -1127,44 +1182,43 @@ def lucas_kanade_np(im1, im2, win=2):
 
 
 ```python
-# k = 10
-# f1, f2 = [ cv2.resize( f, (f.shape[1] // k, f.shape[0] // k) ) 
-#           for f in frames_gray ]
-motion_field = lucas_kanade_np( *frames_f32, win=5 )
-```
+np.seterr('ignore')
+fig, axs = plt.subplots( 1, 3, figsize = (12, 4) )
+for win, ax in zip([5, 11, 15], axs):
+    motion_field = lucas_kanade_np( *frames_f32, win=win )
+    f1, f2 = frames
+    U, V = motion_field[ :, :, 0 ], motion_field[ :, :, 1 ]
 
-    C:\Users\dylan\Miniconda3\envs\python2\lib\site-packages\ipykernel\__main__.py:62: RuntimeWarning: invalid value encountered in true_divide
-    C:\Users\dylan\Miniconda3\envs\python2\lib\site-packages\ipykernel\__main__.py:66: RuntimeWarning: invalid value encountered in true_divide
-    
-
-
-```python
-f1, f2 = frames
-U, V = motion_field[ :, :, 0 ], motion_field[ :, :, 1 ]
-x, y, w, h = 225, 185, 50, 50
-
-U_win = U[ y:y+h, x:x+w ]
-V_win = V[ y:y+h, x:x+w ]
-
-win = f1[ y:y+h, x:x+w ]
-
-fig, ax = plt.subplots()
-ax.imshow( win, interpolation = 'none' )
-ax.axis('off')
-ax.quiver( U_win, V_win, units='xy', color='g' )
+    w, h, c = f1.shape
+    shape = ( w // win, h // win )
+    params = np.zeros( shape + (5,) )
+    for i, j in product(*map(range, shape)):
+        ii, jj = win * i , win * j
+        params[i, j, 0] = ii + win // 2
+        params[i, j, 1] = jj + win // 2
+        params[i, j, 2] = U[ii, jj] / win
+        params[i, j, 3] = V[ii, jj] / win
+        
+    ax.imshow( f1, interpolation = 'none' )
+    ax.axis('off')
+    ax.quiver( params[..., 1], params[..., 0], 
+               params[..., 2], params[..., 3], 
+               units='xy', color='g' )
+axs[0].set_title( '5x5 window' )
+axs[1].set_title( '11x11 window' )
+axs[2].set_title( '15x15 window' )
 plt.show()
 ```
 
 
-![png](output_46_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_45_0.png)
 
 
 # Stereo Vision
 
 ## Scale-Invariant Feature Transform (SIFT)
 
-* Scale invariant detection of salient points
-* Matching by highly distinct local descriptors 
+Scale-invariance is achieved by creating feature points from regions the lie on the extrema of the Difference of Gaussian tree for a given image. With the regions selected the dominant orientation is notated as a vector where the direction corresponds to the sum of the gradient vectors in the region and the magnitude is indicative of the size of the region. The vectors in the region are then projected onto unit vectors in eight directions from which a histogram is constructed. This histogram is the spatial gradient descriptor of the region, when looking for matches to this descriptor all the vectors in the target region are rotated by the cosine distance between the target's dominant vector and the original dominant vector. This normalizes the orientation and makes the transform invariant to rotation. 
 
 ### Difference of Gaussians (DoG) Trees
 
@@ -1193,19 +1247,19 @@ DoG_tree( image_gray )
 ```
 
 
-![png](output_50_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_49_0.png)
 
 
 
-![png](output_50_1.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_49_1.png)
 
 
 
-![png](output_50_2.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_49_2.png)
 
 
 
-![png](output_50_3.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_49_3.png)
 
 
 ### Spatial Gradient Descriptors
@@ -1214,10 +1268,6 @@ DoG_tree( image_gray )
 
 
 ```python
-def gauss( s, m, x, y ):
-    xm, ym = m
-    return np.exp(-((x-xm)**2 + (y-ym)**2)/(2*s**2)) / (2*np.pi*s**2)
-
 gauss_image = np.zeros((16, 16))
 mean = ( gauss_image.shape[0] / 2, gauss_image.shape[1] / 2 )
 std = gauss_image.shape[0] / 5
@@ -1233,7 +1283,7 @@ plt.show()
 ```
 
 
-![png](output_52_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_51_0.png)
 
 
 
@@ -1244,8 +1294,10 @@ def show_spatial_gradient_descriptor( image, window ):
 
     fig, axs = plt.subplots(1, 3, figsize=(12, 4))
 
-    highlighted = cv2.rectangle( cv2.cvtColor( image, cv2.COLOR_GRAY2RGB ), 
-                                (y, x), (y+h, x+w), (0, 255, 0), 2 )
+    rgb = cv2.cvtColor( image, cv2.COLOR_GRAY2RGB )
+    highlighted = cv2.rectangle( rgb, 
+                                (y, x), (y+h, x+w), 
+                                (0, 255, 0), 2 )
     show_image( highlighted, axs[0] )
     axs[0].set_title( 'highlighting the window' )
     
@@ -1271,16 +1323,14 @@ window = (160, 280, 16, 16)
 show_spatial_gradient_descriptor( denoised, window )
 window = (300, 250, 16, 16)
 show_spatial_gradient_descriptor( denoised, window )
-# window = (270, 110, 16, 16)
-# show_spatial_gradient_descriptor( denoised, window )
 ```
 
 
-![png](output_54_0.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_53_0.png)
 
 
 
-![png](output_54_1.png)
+![png](Implementing%20IPCV%20Algorithms_files/Implementing%20IPCV%20Algorithms_53_1.png)
 
 
 The first descriptor has more variation in the angles, hence is more distinctive and better for matching than the second descriptor.
